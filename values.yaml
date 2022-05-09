@@ -1,0 +1,109 @@
+# Default values for docker-registry.
+
+replicaCount: 2
+
+podAnnotations:
+  # kops assume role from kube2iam
+  # or use s3.accesskey|secretkey for s3 bucket access
+  iam.amazonaws.com/role: "arn:aws:iam::123456789:role/iamr-kubernetes-nodes"
+
+updateStrategy:
+   type: RollingUpdate
+   rollingUpdate:
+     maxSurge: 1
+     maxUnavailable: 0
+
+image:
+  repository: registry
+  tag: 2.8.1
+  pullPolicy: IfNotPresent
+
+imageRedis:
+  repository: bitnami/redis
+  tag: 6.2
+  pullPolicy: IfNotPresent
+
+service:
+  port: 5000
+
+ingress:
+  enabled: true
+  path: /
+  hosts:
+    - registry.ingress.some-host.com
+  annotations:
+    # to avoid 413 http error
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.org/client-max-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  labels: {}
+
+resources: {}
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+resourcesRedis: {}
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+# Set this to name of secret for tls certs
+secrets:
+  haSharedSecret: ""
+  ## If you update the username or password of registry, make sure use cli tool htpasswd to generate the bcrypt hash
+  ## e.g. `docker run --entrypoint htpasswd registry:2 -Bbn user password > ./htpasswd`
+  ## in this example: user:changeme
+  htpasswd: "user:$2y$10$lcbAbJEzBMFT420fdD3.N.C/ODB7TrLmBdzX/g/qI9HnsO705Wc6S"
+  redisPassword: ""
+
+configData:
+  version: 0.1
+  log:
+    accesslog:
+      disabled: true
+    level: debug
+    formatter: text
+    fields:
+      service: registry
+  storage:
+    s3:
+      # you can create a user with permissions to access only this s3 bucket
+      # user policy you can find here: https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md
+      # if you have proper role and pod can assume it then leave it empty
+#      accesskey:
+#      secretkey:
+      region: eu-west-1
+      bucket: some-bucket-name
+      #rootdirectory: /
+      encrypt: false
+      secure: false
+    # to be able to clean up old images\tags
+    delete:
+      enabled: true
+    # redis cache
+    cache:
+      blobdescriptor: redis
+  http:
+    addr: :5000
+    headers:
+      X-Content-Type-Options: [nosniff]
+  health:
+    storagedriver:
+      enabled: false
+      interval: 10s
+      threshold: 3
+
+# Optional:
+# one way to execute garbage-collect locally - add this script to cron
+# but I really don't know how it will work with replicas=2 (in parallel) need to be tested
+garbageCollector:
+  addCronJob: true
+
+extraEnvVars: {}

@@ -1,0 +1,12 @@
+apiVersion: v1
+description: A Helm chart for Docker Registry
+name: docker-registry
+version: 1.0.0
+appVersion: 2.8.2
+home: https://hub.docker.com/_/registry/
+maintainers:
+- email: igor.ivanov@tipico.com
+  name: Igor Ivanov
+  url: https://github.com/ppcololo
+sources:
+- https://github.com/docker/distribution-library-image

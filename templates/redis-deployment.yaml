@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "docker-registry.fullname" . }}-redis
+  labels:
+    app: {{ template "docker-registry.name" . }}-redis
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "docker-registry.name" . }}-redis
+      release: {{ .Release.Name }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ template "docker-registry.name" . }}-redis
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: {{ template "docker-registry.name" . }}-redis
+        image: "{{ .Values.imageRedis.repository }}:{{ .Values.imageRedis.tag }}"
+        imagePullPolicy: {{ .Values.imageRedis.pullPolicy }}
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "docker-registry.fullname" . }}-secret
+              key: redisPassword
+        - name: REDIS_MAXMEMORY_POLICY
+          value: "allkeys-lru"
+        ports:
+        - name: redis
+          containerPort: 6379
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+{{ toYaml .Values.resourcesRedis | indent 10 }}
+        volumeMounts:
+        - name: redis-data
+          mountPath: /bitnami/redis
+      volumes:
+      - name: redis-data
+        emptyDir: {}

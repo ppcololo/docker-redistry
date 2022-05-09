@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "docker-registry.fullname" . }}
+  labels:
+    app: {{ template "docker-registry.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "docker-registry.name" . }}
+      release: {{ .Release.Name }}
+  replicas: {{ .Values.replicaCount }}
+{{- if .Values.updateStrategy }}
+  strategy:
+{{ toYaml .Values.updateStrategy | indent 4 }}
+{{- end }}
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app: {{ template "docker-registry.name" . }}
+        release: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+{{- if $.Values.podAnnotations }}
+{{ toYaml $.Values.podAnnotations | indent 8 }}
+{{- end }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+          - /bin/registry
+          - serve
+          - /etc/docker/registry/config.yml
+          ports:
+            - containerPort: 5000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          env:
+{{- if .Values.secrets.htpasswd }}
+            - name: REGISTRY_AUTH
+              value: "htpasswd"
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Registry Realm"
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: "/auth/htpasswd"
+{{- end }}
+            - name: REGISTRY_HTTP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "docker-registry.fullname" . }}-secret
+                  key: haSharedSecret
+            - name: REGISTRY_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "docker-registry.fullname" . }}-secret
+                  key: redisPassword
+            - name: REGISTRY_REDIS_ADDR
+              value: {{ template "docker-registry.fullname" . }}-redis:6379
+{{- with .Values.extraEnvVars }}
+        {{- toYaml . | nindent 12 }}
+{{- end }}
+          volumeMounts:
+{{- if .Values.secrets.htpasswd }}
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+{{- end }}
+            - name: "{{ template "docker-registry.fullname" . }}-config"
+              mountPath: "/etc/docker/registry/config.yml"
+              subPath: config.yml
+            - name: "{{ template "docker-registry.fullname" . }}-config"
+              mountPath: "/etc/periodic/15min/garbage-collector"
+              subPath: garbage-collector.sh
+      volumes:
+{{- if .Values.secrets.htpasswd }}
+        - name: auth
+          secret:
+            secretName: {{ template "docker-registry.fullname" . }}-secret
+            items:
+            - key: htpasswd
+              path: htpasswd
+{{- end }}
+        - name: {{ template "docker-registry.fullname" . }}-config
+          configMap:
+            name: {{ template "docker-registry.fullname" . }}-config
+            defaultMode: 0775
+            items:
+              - key: config.yml
+                path: config.yml
+              - key: garbage-collector.sh
+                path: garbage-collector.sh
